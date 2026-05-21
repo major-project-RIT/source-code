@@ -2,10 +2,13 @@ import process from "node:process";
 
 const WEATHER_MODEL = process.env.OPENAI_WEATHER_SEARCH_MODEL || "gpt-5.5";
 
-export async function fetchRealtimeWeather({ city } = {}) {
+export async function fetchRealtimeWeather({ city, cityWasExplicitlyProvidedByUser } = {}) {
   const normalizedCity = String(city || "").trim();
   if (!normalizedCity) {
     throw new Error("city is required.");
+  }
+  if (cityWasExplicitlyProvidedByUser !== true) {
+    throw new Error("Ask the user for their current city before fetching weather.");
   }
 
   const apiKey = process.env.OPENAI_API_KEY;

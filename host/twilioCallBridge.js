@@ -135,7 +135,7 @@ async function captureInitialNpk(args) {
   }
 
   console.log(`Reading live NPK from ESP32 on ${SERIAL_PORT} @ ${SERIAL_BAUD} before dialing...`);
-  return enrichWithStcrRanking(await esp32.readNpkSensor());
+  return enrichWithStcrRanking(await runSerialCommand(() => esp32.readNpkSensor()));
 }
 
 async function bridgeTwilioToRealtime(twilioWs, context) {
@@ -332,10 +332,10 @@ async function runToolCall(call) {
 
   try {
     if (call.name === "read_npk_sensor") {
-      return enrichWithStcrRanking(await esp32.readNpkSensor());
+      return enrichWithStcrRanking(await runSerialCommand(() => esp32.readNpkSensor()));
     }
     if (call.name === "mock_npk_sensor") {
-      return enrichWithStcrRanking(await esp32.mockNpk(args));
+      return enrichWithStcrRanking(await runSerialCommand(() => esp32.mockNpk(args)));
     }
     if (call.name === "rank_crops_from_npk") {
       return rankCropsFromNpk(args);
@@ -344,19 +344,19 @@ async function runToolCall(call) {
       return fetchRealtimeWeather(args);
     }
     if (call.name === "get_npk_calibration") {
-      return esp32.getCalibration();
+      return runSerialCommand(() => esp32.getCalibration());
     }
     if (call.name === "reset_npk_calibration") {
-      return esp32.resetCalibration();
+      return runSerialCommand(() => esp32.resetCalibration());
     }
     if (call.name === "set_npk_calibration") {
-      return esp32.setCalibration(args);
+      return runSerialCommand(() => esp32.setCalibration(args));
     }
     if (call.name === "set_npk_offset_calibration") {
-      return esp32.setOffsetCalibration(args);
+      return runSerialCommand(() => esp32.setOffsetCalibration(args));
     }
     if (call.name === "set_npk_two_point_calibration") {
-      return esp32.setTwoPointCalibration(args);
+      return runSerialCommand(() => esp32.setTwoPointCalibration(args));
     }
     return { ok: false, error: `Unknown tool: ${call.name}` };
   } catch (error) {
@@ -526,6 +526,14 @@ async function shutdown(server) {
   server.close();
   await esp32.close();
   process.exit(0);
+}
+
+async function runSerialCommand(command) {
+  try {
+    return await command();
+  } finally {
+    await esp32.close();
+  }
 }
 
 function tryClose(ws) {

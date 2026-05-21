@@ -99,7 +99,7 @@ app.post("/api/realtime/client-secret", async (_request, response) => {
 
 app.post("/api/tools/read-npk", async (_request, response) => {
   try {
-    const result = await esp32.readNpkSensor();
+    const result = await runSerialCommand(() => esp32.readNpkSensor());
     response.json(enrichWithStcrRanking(result));
   } catch (error) {
     response.status(500).json({
@@ -111,7 +111,7 @@ app.post("/api/tools/read-npk", async (_request, response) => {
 
 app.post("/api/tools/mock-npk", async (request, response) => {
   try {
-    const result = await esp32.mockNpk(request.body || {});
+    const result = await runSerialCommand(() => esp32.mockNpk(request.body || {}));
     response.json(enrichWithStcrRanking(result));
   } catch (error) {
     response.status(400).json({
@@ -134,7 +134,7 @@ app.post("/api/tools/rank-crops", async (request, response) => {
 
 app.post("/api/tools/calibration/show", async (_request, response) => {
   try {
-    response.json(await esp32.getCalibration());
+    response.json(await runSerialCommand(() => esp32.getCalibration()));
   } catch (error) {
     response.status(400).json({
       ok: false,
@@ -145,7 +145,7 @@ app.post("/api/tools/calibration/show", async (_request, response) => {
 
 app.post("/api/tools/calibration/reset", async (_request, response) => {
   try {
-    response.json(await esp32.resetCalibration());
+    response.json(await runSerialCommand(() => esp32.resetCalibration()));
   } catch (error) {
     response.status(400).json({
       ok: false,
@@ -156,7 +156,7 @@ app.post("/api/tools/calibration/reset", async (_request, response) => {
 
 app.post("/api/tools/calibration/set", async (request, response) => {
   try {
-    response.json(await esp32.setCalibration(request.body || {}));
+    response.json(await runSerialCommand(() => esp32.setCalibration(request.body || {})));
   } catch (error) {
     response.status(400).json({
       ok: false,
@@ -167,7 +167,7 @@ app.post("/api/tools/calibration/set", async (request, response) => {
 
 app.post("/api/tools/calibration/offset", async (request, response) => {
   try {
-    response.json(await esp32.setOffsetCalibration(request.body || {}));
+    response.json(await runSerialCommand(() => esp32.setOffsetCalibration(request.body || {})));
   } catch (error) {
     response.status(400).json({
       ok: false,
@@ -178,7 +178,7 @@ app.post("/api/tools/calibration/offset", async (request, response) => {
 
 app.post("/api/tools/calibration/two-point", async (request, response) => {
   try {
-    response.json(await esp32.setTwoPointCalibration(request.body || {}));
+    response.json(await runSerialCommand(() => esp32.setTwoPointCalibration(request.body || {})));
   } catch (error) {
     response.status(400).json({
       ok: false,
@@ -198,17 +198,28 @@ app.post("/api/tools/weather", async (request, response) => {
   }
 });
 
-app.listen(SERVER_PORT, () => {
+const server = app.listen(SERVER_PORT, () => {
   console.log(`Browser app: http://localhost:${SERVER_PORT}`);
   console.log(`Realtime model: ${MODEL}`);
-  console.log(`ESP32 serial (lazy open): ${SERIAL_PORT} @ ${SERIAL_BAUD}`);
-  console.log("Note: serial opens on first /api/tools/read-npk or /api/tools/mock-npk call.");
+  console.log(`ESP32 serial: ${SERIAL_PORT} @ ${SERIAL_BAUD}`);
+  console.log("Note: serial opens only while a sensor/calibration tool request is running.");
 });
+const keepAlive = setInterval(() => {}, 1 << 30);
 
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
 async function shutdown() {
+  clearInterval(keepAlive);
   await esp32.close();
+  server.close();
   process.exit(0);
+}
+
+async function runSerialCommand(command) {
+  try {
+    return await command();
+  } finally {
+    await esp32.close();
+  }
 }

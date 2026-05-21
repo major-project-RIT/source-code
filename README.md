@@ -197,10 +197,10 @@ TWILIO_HOST=0.0.0.0
 TWILIO_PORT=3000
 ESP32_SERIAL_PORT=/dev/cu.usbmodem11101
 ESP32_SERIAL_BAUD=115200
-PORT=3000
+PORT=3001
 ```
 
-Start a public tunnel to the local port, then dial:
+Use separate local ports when running the browser app and Twilio bridge together: `PORT=3001` for the browser app, and `TWILIO_PORT=3000` for the Twilio webhook server. Start the public tunnel to the Twilio port, then dial:
 
 ```sh
 npm run twilio:call

@@ -1,7 +1,9 @@
 import { SerialPort } from "serialport";
 import { ReadlineParser } from "@serialport/parser-readline";
+import { access } from "node:fs/promises";
 
 const DEFAULT_TIMEOUT_MS = 4_000;
+const LOCK_RETRY_DELAYS_MS = [200, 400, 800, 1_200, 1_600];
 
 export class Esp32SerialTool {
   constructor({ portPath, baudRate = 115200, timeoutMs = DEFAULT_TIMEOUT_MS }) {
@@ -17,6 +19,7 @@ export class Esp32SerialTool {
       return;
     }
 
+    this.portPath = await resolvePortPath(this.portPath);
     this.port = new SerialPort({
       path: this.portPath,
       baudRate: this.baudRate,
@@ -26,15 +29,7 @@ export class Esp32SerialTool {
     this.parser = this.port.pipe(new ReadlineParser({ delimiter: "\n" }));
     this.parser.on("data", (line) => this.handleLine(line));
 
-    await new Promise((resolve, reject) => {
-      this.port.open((error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-        resolve();
-      });
-    });
+    await this.openWithRetry();
 
     // Give the ESP32 USB CDC stream a moment to settle after the host opens it.
     await sleep(250);
@@ -54,6 +49,28 @@ export class Esp32SerialTool {
         resolve();
       });
     });
+  }
+
+  async openWithRetry() {
+    for (let attempt = 0; attempt <= LOCK_RETRY_DELAYS_MS.length; attempt += 1) {
+      try {
+        await new Promise((resolve, reject) => {
+          this.port.open((error) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+            resolve();
+          });
+        });
+        return;
+      } catch (error) {
+        if (!isTemporaryPortLock(error) || attempt === LOCK_RETRY_DELAYS_MS.length) {
+          throw error;
+        }
+        await sleep(LOCK_RETRY_DELAYS_MS[attempt]);
+      }
+    }
   }
 
   async readNpkSensor() {
@@ -197,4 +214,36 @@ function toNonNegativeNumber(value, name) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function resolvePortPath(configuredPath) {
+  if (configuredPath && (await pathExists(configuredPath))) {
+    return configuredPath;
+  }
+
+  const ports = await SerialPort.list();
+  const detected = ports
+    .map((port) => port.path)
+    .find((path) => /\/dev\/cu\.(usbmodem|usbserial)/.test(path));
+
+  if (detected) {
+    return detected;
+  }
+
+  const configuredMessage = configuredPath ? ` Configured path was ${configuredPath}.` : "";
+  throw new Error(`ESP32 serial port not found.${configuredMessage} Replug the ESP32 and check pio device list.`);
+}
+
+async function pathExists(path) {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isTemporaryPortLock(error) {
+  const message = String(error?.message || "");
+  return /Resource temporarily unavailable|Cannot lock port|busy|EBUSY/i.test(message);
 }

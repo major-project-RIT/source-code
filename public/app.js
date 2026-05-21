@@ -43,9 +43,23 @@ textForm.addEventListener("submit", (event) => {
  */
 async function connectRealtime() {
   try {
-    setStatus("Creating session...", "idle");
+    setStatus("Requesting microphone...", "idle");
     connectButton.disabled = true;
 
+    const microphoneError = await getMicrophoneStream()
+      .then((stream) => {
+        localStream = stream;
+        return undefined;
+      })
+      .catch((error) => error);
+
+    if (microphoneError) {
+      const message = formatMicrophoneError(microphoneError);
+      appendMessage("tool", `${message} Continuing with typed input only.`);
+      logEvent(message);
+    }
+
+    setStatus("Creating session...", "idle");
     const tokenPayload = await postJson("/api/realtime/client-secret", {});
     const ephemeralKey =
       tokenPayload.value ||
@@ -61,20 +75,17 @@ async function connectRealtime() {
       [remoteAudio.srcObject] = event.streams;
     };
 
-    localStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      },
-    });
-    for (const track of localStream.getTracks()) {
-      peerConnection.addTrack(track, localStream);
+    if (localStream) {
+      for (const track of localStream.getTracks()) {
+        peerConnection.addTrack(track, localStream);
+      }
+    } else {
+      peerConnection.addTransceiver("audio", { direction: "recvonly" });
     }
 
     dataChannel = peerConnection.createDataChannel("oai-events");
     dataChannel.addEventListener("open", () => {
-      setStatus("Live: speak now", "live");
+      setStatus(localStream ? "Live: speak now" : "Live: type only", "live");
       setControlsEnabled(true);
       logEvent("Realtime data channel opened.");
     });
@@ -105,18 +116,19 @@ async function connectRealtime() {
 
     logEvent("WebRTC answer applied.");
   } catch (error) {
+    const message = formatConnectionError(error);
     setStatus("Error", "error");
     connectButton.disabled = false;
-    appendMessage("tool", `Connection failed: ${error.message}`);
-    logEvent(error.message);
-    await disconnectRealtime();
+    appendMessage("tool", `Connection failed: ${message}`);
+    logEvent(message);
+    await disconnectRealtime({ resetStatus: false });
   }
 }
 
 /**
  * Tears down microphone, WebRTC, and data channel resources.
  */
-async function disconnectRealtime() {
+async function disconnectRealtime({ resetStatus = true } = {}) {
   if (localStream) {
     for (const track of localStream.getTracks()) {
       track.stop();
@@ -134,8 +146,47 @@ async function disconnectRealtime() {
 
   setControlsEnabled(false);
   connectButton.disabled = false;
-  setStatus("Idle", "idle");
-  logEvent("Session stopped.");
+  if (resetStatus) {
+    setStatus("Idle", "idle");
+    logEvent("Session stopped.");
+  }
+}
+
+async function getMicrophoneStream() {
+  if (!window.isSecureContext) {
+    throw new Error("Microphone access requires http://localhost or HTTPS.");
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error("This browser does not expose microphone access to the page.");
+  }
+
+  return navigator.mediaDevices.getUserMedia({
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    },
+  });
+}
+
+function formatMicrophoneError(error) {
+  if (error?.name === "NotAllowedError" || error?.name === "SecurityError") {
+    return "Microphone permission was denied. Allow microphone access for this localhost page to speak.";
+  }
+  if (error?.name === "NotFoundError") {
+    return "No microphone was found. Connect or enable an input device to speak.";
+  }
+  if (error?.name === "NotReadableError") {
+    return "The microphone is already in use by another app or browser tab.";
+  }
+  return error?.message || "Unknown error.";
+}
+
+function formatConnectionError(error) {
+  if (error?.name === "NotAllowedError" || error?.name === "SecurityError") {
+    return formatMicrophoneError(error);
+  }
+  return error?.message || "Unknown error.";
 }
 
 /**

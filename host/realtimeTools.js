@@ -65,7 +65,7 @@ export const REALTIME_TOOLS = [
     type: "function",
     name: "fetch_realtime_weather",
     description:
-      "Fetch current weather for a user-provided city using OpenAI native web search. Use this when weather can affect soil sampling, irrigation, fertilizer timing, or field work.",
+      "Fetch current weather for a city the user explicitly provided in this conversation. If the user has not clearly said their city or nearest city, ask for it before calling this tool.",
     parameters: {
       type: "object",
       additionalProperties: false,
@@ -73,10 +73,15 @@ export const REALTIME_TOOLS = [
         city: {
           type: "string",
           description:
-            "The current city or nearest city to search weather for. Ask the user for this before calling the tool if it is unknown.",
+            "The current city or nearest city exactly as provided by the user. Do not infer this from project context, IP address, browser context, or guesses.",
+        },
+        cityWasExplicitlyProvidedByUser: {
+          type: "boolean",
+          description:
+            "Must be true only when the user clearly provided the city in this conversation. If false or uncertain, ask the user for their city instead of calling this tool.",
         },
       },
-      required: ["city"],
+      required: ["city", "cityWasExplicitlyProvidedByUser"],
     },
   },
   {
