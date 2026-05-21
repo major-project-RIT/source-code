@@ -70,6 +70,32 @@ export class Esp32SerialTool {
     return this.enqueueCommand(`TARGET ${Number(targetYieldQHa)}`);
   }
 
+  async getCalibration() {
+    return this.enqueueCommand("CAL SHOW");
+  }
+
+  async resetCalibration() {
+    return this.enqueueCommand("CAL RESET");
+  }
+
+  async setCalibration({ nutrient, slope, offset }) {
+    return this.enqueueCommand(
+      `CAL SET ${toNutrient(nutrient)} ${toFiniteNumber(slope, "slope")} ${toFiniteNumber(offset, "offset")}`,
+    );
+  }
+
+  async setOffsetCalibration({ nutrient, rawValue, referenceValue }) {
+    return this.enqueueCommand(
+      `CAL OFFSET ${toNutrient(nutrient)} ${toNonNegativeNumber(rawValue, "rawValue")} ${toNonNegativeNumber(referenceValue, "referenceValue")}`,
+    );
+  }
+
+  async setTwoPointCalibration({ nutrient, rawValue1, referenceValue1, rawValue2, referenceValue2 }) {
+    return this.enqueueCommand(
+      `CAL TWO ${toNutrient(nutrient)} ${toNonNegativeNumber(rawValue1, "rawValue1")} ${toNonNegativeNumber(referenceValue1, "referenceValue1")} ${toNonNegativeNumber(rawValue2, "rawValue2")} ${toNonNegativeNumber(referenceValue2, "referenceValue2")}`,
+    );
+  }
+
   async enqueueCommand(command) {
     const run = this.commandQueue.then(() => this.writeCommand(command));
 
@@ -143,6 +169,30 @@ function toNonNegativeInt(value) {
     throw new Error("NPK values must be non-negative numbers");
   }
   return Math.round(number);
+}
+
+function toNutrient(value) {
+  const nutrient = String(value || "").trim().toUpperCase();
+  if (!["N", "P", "K"].includes(nutrient)) {
+    throw new Error("nutrient must be N, P, or K");
+  }
+  return nutrient;
+}
+
+function toFiniteNumber(value, name) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    throw new Error(`${name} must be a finite number`);
+  }
+  return number;
+}
+
+function toNonNegativeNumber(value, name) {
+  const number = toFiniteNumber(value, name);
+  if (number < 0) {
+    throw new Error(`${name} must be non-negative`);
+  }
+  return number;
 }
 
 function sleep(ms) {

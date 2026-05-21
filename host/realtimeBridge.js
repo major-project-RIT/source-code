@@ -9,8 +9,9 @@ import { Esp32SerialTool } from "./esp32SerialTool.js";
 import { REALTIME_INSTRUCTIONS } from "./realtimePrompt.js";
 import { REALTIME_TOOLS } from "./realtimeTools.js";
 import { enrichWithStcrRanking, rankCropsFromNpk } from "./stcrEngine.js";
+import { fetchRealtimeWeather } from "./weatherSearchTool.js";
 
-const MODEL = process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-1.5";
+const MODEL = process.env.REALTIME_MODEL || process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-1.5";
 const SERIAL_PORT = process.env.ESP32_SERIAL_PORT || "/dev/cu.usbmodem1101";
 const SERIAL_BAUD = Number(process.env.ESP32_SERIAL_BAUD || 115200);
 
@@ -178,6 +179,24 @@ async function runToolCall(call) {
     }
     if (call.name === "rank_crops_from_npk") {
       return rankCropsFromNpk(args);
+    }
+    if (call.name === "fetch_realtime_weather") {
+      return fetchRealtimeWeather(args);
+    }
+    if (call.name === "get_npk_calibration") {
+      return esp32.getCalibration();
+    }
+    if (call.name === "reset_npk_calibration") {
+      return esp32.resetCalibration();
+    }
+    if (call.name === "set_npk_calibration") {
+      return esp32.setCalibration(args);
+    }
+    if (call.name === "set_npk_offset_calibration") {
+      return esp32.setOffsetCalibration(args);
+    }
+    if (call.name === "set_npk_two_point_calibration") {
+      return esp32.setTwoPointCalibration(args);
     }
     return { ok: false, error: `Unknown tool: ${call.name}` };
   } catch (error) {

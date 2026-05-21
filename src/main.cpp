@@ -1,4 +1,7 @@
 #include <Arduino.h>
+#include <Preferences.h>
+#include <ctype.h>
+#include <math.h>
 
 #include "config.h"
 #include "modbus_npk_sensor.h"
@@ -15,12 +18,85 @@ SoilRecommendationEngine recommendationEngine(Config::DefaultRiceTargetYieldQHa)
 String serialCommand;
 bool automaticReadsEnabled = false;
 uint32_t lastAutomaticReadAt = 0;
+Preferences calibrationPrefs;
+
+struct NutrientCalibration {
+  float slope = 1.0F;
+  float offset = 0.0F;
+};
+
+struct NpkCalibration {
+  NutrientCalibration nitrogen;
+  NutrientCalibration phosphorus;
+  NutrientCalibration potassium;
+};
+
+NpkCalibration npkCalibration;
+
+bool isValidCalibrationNumber(float value) {
+  return isfinite(value) && value > -100000.0F && value < 100000.0F;
+}
+
+float applyNutrientCalibration(float raw, const NutrientCalibration& calibration) {
+  const float calibrated = calibration.slope * raw + calibration.offset;
+  return calibrated < 0.0F ? 0.0F : calibrated;
+}
+
+NpkReading applyCalibration(const NpkReading& raw) {
+  NpkReading calibrated;
+  calibrated.nitrogenKgHa = applyNutrientCalibration(raw.nitrogenKgHa, npkCalibration.nitrogen);
+  calibrated.phosphorusKgHa = applyNutrientCalibration(raw.phosphorusKgHa, npkCalibration.phosphorus);
+  calibrated.potassiumKgHa = applyNutrientCalibration(raw.potassiumKgHa, npkCalibration.potassium);
+  return calibrated;
+}
+
+void loadCalibration() {
+  calibrationPrefs.begin("npk_cal", false);
+  npkCalibration.nitrogen.slope = calibrationPrefs.getFloat("n_slope", 1.0F);
+  npkCalibration.nitrogen.offset = calibrationPrefs.getFloat("n_offset", 0.0F);
+  npkCalibration.phosphorus.slope = calibrationPrefs.getFloat("p_slope", 1.0F);
+  npkCalibration.phosphorus.offset = calibrationPrefs.getFloat("p_offset", 0.0F);
+  npkCalibration.potassium.slope = calibrationPrefs.getFloat("k_slope", 1.0F);
+  npkCalibration.potassium.offset = calibrationPrefs.getFloat("k_offset", 0.0F);
+}
+
+void saveCalibration() {
+  calibrationPrefs.putFloat("n_slope", npkCalibration.nitrogen.slope);
+  calibrationPrefs.putFloat("n_offset", npkCalibration.nitrogen.offset);
+  calibrationPrefs.putFloat("p_slope", npkCalibration.phosphorus.slope);
+  calibrationPrefs.putFloat("p_offset", npkCalibration.phosphorus.offset);
+  calibrationPrefs.putFloat("k_slope", npkCalibration.potassium.slope);
+  calibrationPrefs.putFloat("k_offset", npkCalibration.potassium.offset);
+}
+
+void resetCalibration() {
+  npkCalibration = NpkCalibration{};
+  saveCalibration();
+}
 
 /**
  * Prints a fixed precision number for compact serial JSON output.
  */
 void printNumber(float value) {
   Serial.print(value, 2);
+}
+
+void printCalibrationObject(const NutrientCalibration& calibration) {
+  Serial.print(F("{\"slope\":"));
+  printNumber(calibration.slope);
+  Serial.print(F(",\"offset\":"));
+  printNumber(calibration.offset);
+  Serial.print(F("}"));
+}
+
+void printCalibrationJson() {
+  Serial.print(F("{\"ok\":true,\"calibration\":{\"n\":"));
+  printCalibrationObject(npkCalibration.nitrogen);
+  Serial.print(F(",\"p\":"));
+  printCalibrationObject(npkCalibration.phosphorus);
+  Serial.print(F(",\"k\":"));
+  printCalibrationObject(npkCalibration.potassium);
+  Serial.println(F("}}"));
 }
 
 /**
@@ -39,14 +115,26 @@ const char* nutrientStatus(float score) {
 /**
  * Emits one machine-readable JSON line for GPT Realtime tool-calling later.
  */
-void printJsonResult(const NpkReading& reading, const RiceSuitability& rice) {
+void printJsonResult(const NpkReading& reading, const NpkReading& rawReading, const RiceSuitability& rice) {
   Serial.print(F("{\"ok\":true,\"sensor\":{\"n_kg_ha\":"));
-  Serial.print(reading.nitrogenKgHa);
+  printNumber(reading.nitrogenKgHa);
   Serial.print(F(",\"p_kg_ha\":"));
-  Serial.print(reading.phosphorusKgHa);
+  printNumber(reading.phosphorusKgHa);
   Serial.print(F(",\"k_kg_ha\":"));
-  Serial.print(reading.potassiumKgHa);
-  Serial.print(F(",\"source\":\"zts_3002_tr_npk_n01\"},\"rice\":{\"target_yield_q_ha\":"));
+  printNumber(reading.potassiumKgHa);
+  Serial.print(F(",\"raw_n_kg_ha\":"));
+  printNumber(rawReading.nitrogenKgHa);
+  Serial.print(F(",\"raw_p_kg_ha\":"));
+  printNumber(rawReading.phosphorusKgHa);
+  Serial.print(F(",\"raw_k_kg_ha\":"));
+  printNumber(rawReading.potassiumKgHa);
+  Serial.print(F(",\"calibration\":{\"n\":"));
+  printCalibrationObject(npkCalibration.nitrogen);
+  Serial.print(F(",\"p\":"));
+  printCalibrationObject(npkCalibration.phosphorus);
+  Serial.print(F(",\"k\":"));
+  printCalibrationObject(npkCalibration.potassium);
+  Serial.print(F("},\"source\":\"zts_3002_tr_npk_n01\"},\"rice\":{\"target_yield_q_ha\":"));
   printNumber(rice.targetYieldQHa);
   Serial.print(F(",\"fertilizer_requirement_kg_ha\":{\"n\":"));
   printNumber(rice.requirement.nitrogenKgHa);
@@ -89,14 +177,23 @@ void printJsonError(const String& error) {
 /**
  * Prints a short human-readable summary beside the JSON contract.
  */
-void printHumanSummary(const NpkReading& reading, const RiceSuitability& rice) {
+void printHumanSummary(const NpkReading& reading, const NpkReading& rawReading, const RiceSuitability& rice) {
   Serial.println(F("\n--- Soil Recommendation ---"));
-  Serial.print(F("NPK sensor values (kg/ha): N="));
-  Serial.print(reading.nitrogenKgHa);
+  Serial.print(F("Calibrated NPK values (kg/ha): N="));
+  printNumber(reading.nitrogenKgHa);
   Serial.print(F(", P="));
-  Serial.print(reading.phosphorusKgHa);
+  printNumber(reading.phosphorusKgHa);
   Serial.print(F(", K="));
-  Serial.println(reading.potassiumKgHa);
+  printNumber(reading.potassiumKgHa);
+  Serial.println();
+
+  Serial.print(F("Raw NPK values (kg/ha): N="));
+  printNumber(rawReading.nitrogenKgHa);
+  Serial.print(F(", P="));
+  printNumber(rawReading.phosphorusKgHa);
+  Serial.print(F(", K="));
+  printNumber(rawReading.potassiumKgHa);
+  Serial.println();
 
   Serial.print(F("Rice target yield: "));
   printNumber(rice.targetYieldQHa);
@@ -128,18 +225,19 @@ void printHumanSummary(const NpkReading& reading, const RiceSuitability& rice) {
  * Reads the physical NPK sensor and prints both farmer-facing and tool-facing output.
  */
 void readSensorAndReport(bool humanOutput) {
-  NpkReading reading;
+  NpkReading rawReading;
   String error;
-  if (!npkSensor.readNpk(Config::NpkRegisterStart, reading, error)) {
+  if (!npkSensor.readNpk(Config::NpkRegisterStart, rawReading, error)) {
     printJsonError(error);
     return;
   }
 
+  const NpkReading reading = applyCalibration(rawReading);
   const RiceSuitability rice = recommendationEngine.evaluateRice(reading);
   if (humanOutput) {
-    printHumanSummary(reading, rice);
+    printHumanSummary(reading, rawReading, rice);
   }
-  printJsonResult(reading, rice);
+  printJsonResult(reading, rawReading, rice);
 }
 
 /**
@@ -152,8 +250,8 @@ void reportMockReading(uint16_t nitrogen, uint16_t phosphorus, uint16_t potassiu
   reading.potassiumKgHa = potassium;
 
   const RiceSuitability rice = recommendationEngine.evaluateRice(reading);
-  printHumanSummary(reading, rice);
-  printJsonResult(reading, rice);
+  printHumanSummary(reading, reading, rice);
+  printJsonResult(reading, reading, rice);
 }
 
 /**
@@ -233,12 +331,131 @@ void scanNpkSensor() {
   Serial.println(F("{\"ok\":true,\"scan\":\"finished\"}"));
 }
 
+NutrientCalibration* calibrationFor(char nutrient) {
+  switch (nutrient) {
+    case 'N':
+      return &npkCalibration.nitrogen;
+    case 'P':
+      return &npkCalibration.phosphorus;
+    case 'K':
+      return &npkCalibration.potassium;
+    default:
+      return nullptr;
+  }
+}
+
+bool parseNutrient(const char* text, char& nutrient) {
+  if (text == nullptr || text[0] == '\0') {
+    return false;
+  }
+  nutrient = static_cast<char>(toupper(text[0]));
+  return nutrient == 'N' || nutrient == 'P' || nutrient == 'K';
+}
+
+void setCalibrationFor(char nutrient, float slope, float offset) {
+  NutrientCalibration* calibration = calibrationFor(nutrient);
+  if (calibration == nullptr) {
+    printJsonError(F("Use nutrient N, P, or K"));
+    return;
+  }
+  if (!isValidCalibrationNumber(slope) || !isValidCalibrationNumber(offset) || slope <= 0.0F) {
+    printJsonError(F("Calibration slope must be positive and values must be finite"));
+    return;
+  }
+
+  calibration->slope = slope;
+  calibration->offset = offset;
+  saveCalibration();
+  printCalibrationJson();
+}
+
+void handleCalibrationCommand(const String& command) {
+  String upperCommand = command;
+  upperCommand.toUpperCase();
+
+  if (upperCommand == F("CAL SHOW")) {
+    printCalibrationJson();
+    return;
+  }
+
+  if (upperCommand == F("CAL RESET")) {
+    resetCalibration();
+    printCalibrationJson();
+    return;
+  }
+
+  char nutrientText[4] = {0};
+  float slope = 0.0F;
+  float offset = 0.0F;
+  if (sscanf(command.c_str(), "%*s %*s %3s %f %f", nutrientText, &slope, &offset) == 3 &&
+      upperCommand.startsWith(F("CAL SET "))) {
+    char nutrient = '\0';
+    if (!parseNutrient(nutrientText, nutrient)) {
+      printJsonError(F("Use CAL SET N|P|K SLOPE OFFSET"));
+      return;
+    }
+    setCalibrationFor(nutrient, slope, offset);
+    return;
+  }
+
+  float raw = 0.0F;
+  float reference = 0.0F;
+  if (sscanf(command.c_str(), "%*s %*s %3s %f %f", nutrientText, &raw, &reference) == 3 &&
+      upperCommand.startsWith(F("CAL OFFSET "))) {
+    char nutrient = '\0';
+    if (!parseNutrient(nutrientText, nutrient)) {
+      printJsonError(F("Use CAL OFFSET N|P|K RAW REFERENCE"));
+      return;
+    }
+    if (!isValidCalibrationNumber(raw) || !isValidCalibrationNumber(reference) || raw < 0.0F || reference < 0.0F) {
+      printJsonError(F("Raw and reference values must be finite non-negative numbers"));
+      return;
+    }
+    setCalibrationFor(nutrient, 1.0F, reference - raw);
+    return;
+  }
+
+  float raw1 = 0.0F;
+  float reference1 = 0.0F;
+  float raw2 = 0.0F;
+  float reference2 = 0.0F;
+  if (sscanf(command.c_str(), "%*s %*s %3s %f %f %f %f", nutrientText, &raw1, &reference1, &raw2, &reference2) == 5 &&
+      upperCommand.startsWith(F("CAL TWO "))) {
+    char nutrient = '\0';
+    if (!parseNutrient(nutrientText, nutrient)) {
+      printJsonError(F("Use CAL TWO N|P|K RAW1 REF1 RAW2 REF2"));
+      return;
+    }
+    if (!isValidCalibrationNumber(raw1) || !isValidCalibrationNumber(reference1) ||
+        !isValidCalibrationNumber(raw2) || !isValidCalibrationNumber(reference2) ||
+        raw1 < 0.0F || reference1 < 0.0F || raw2 < 0.0F || reference2 < 0.0F) {
+      printJsonError(F("Raw and reference values must be finite non-negative numbers"));
+      return;
+    }
+    if (fabs(raw2 - raw1) < 0.001F) {
+      printJsonError(F("Two-point calibration needs different raw values"));
+      return;
+    }
+    const float computedSlope = (reference2 - reference1) / (raw2 - raw1);
+    const float computedOffset = reference1 - computedSlope * raw1;
+    setCalibrationFor(nutrient, computedSlope, computedOffset);
+    return;
+  }
+
+  printJsonError(F("Use CAL SHOW, CAL RESET, CAL SET N SLOPE OFFSET, CAL OFFSET N RAW REF, or CAL TWO N RAW1 REF1 RAW2 REF2"));
+}
+
 void printHelp() {
   Serial.println(F("\nCommands:"));
   Serial.println(F("  READ_NPK        Read sensor and print summary + JSON"));
   Serial.println(F("  JSON            Read sensor and print JSON only"));
   Serial.println(F("  MOCK N P K      Test maths without sensor, example: MOCK 120 30 200"));
   Serial.println(F("  SCAN            Try common Modbus NPK baud/slave/register settings"));
+  Serial.println(F("  CAL SHOW        Print saved N/P/K slope and offset calibration"));
+  Serial.println(F("  CAL RESET       Reset calibration to slope=1, offset=0"));
+  Serial.println(F("  CAL SET N 1 0   Set one nutrient slope and offset"));
+  Serial.println(F("  CAL OFFSET N RAW REF      Set one-point offset from raw/reference"));
+  Serial.println(F("  CAL TWO N R1 REF1 R2 REF2 Set two-point slope and offset"));
   Serial.println(F("  TARGET 60       Set rice target yield in q/ha"));
   Serial.println(F("  AUTO ON|OFF     Enable/disable 5-second automatic reads"));
   Serial.println(F("  HELP            Show this menu\n"));
@@ -273,6 +490,11 @@ void handleCommand(String command) {
 
   if (upperCommand == F("SCAN")) {
     scanNpkSensor();
+    return;
+  }
+
+  if (upperCommand.startsWith(F("CAL "))) {
+    handleCalibrationCommand(command);
     return;
   }
 
@@ -323,6 +545,7 @@ void handleCommand(String command) {
 void setup() {
   Serial.begin(115200);
   delay(500);
+  loadCalibration();
 
   npkSensor.begin(
       Config::SensorBaud,

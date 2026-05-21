@@ -3,9 +3,9 @@
 #include <Arduino.h>
 
 struct NpkReading {
-  uint16_t nitrogenKgHa = 0;
-  uint16_t phosphorusKgHa = 0;
-  uint16_t potassiumKgHa = 0;
+  float nitrogenKgHa = 0.0F;
+  float phosphorusKgHa = 0.0F;
+  float potassiumKgHa = 0.0F;
 };
 
 class ModbusNpkSensor {

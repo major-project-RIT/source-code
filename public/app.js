@@ -210,7 +210,7 @@ async function handleResponseDone(response) {
     sensorJson.textContent = JSON.stringify(result, null, 2);
     renderCropRanking(result);
     toolStatus.textContent = result.ok ? `Tool ${call.name} completed` : `Tool ${call.name} failed`;
-    appendMessage("tool", result.ok ? `Tool ${call.name} returned ESP32 data.` : `Tool ${call.name} failed: ${result.error}`);
+    appendMessage("tool", result.ok ? `Tool ${call.name} returned data.` : `Tool ${call.name} failed: ${result.error}`);
 
     sendRealtime({
       type: "conversation.item.create",
@@ -252,6 +252,24 @@ async function runToolCall(call) {
   }
   if (call.name === "rank_crops_from_npk") {
     return postJson("/api/tools/rank-crops", args);
+  }
+  if (call.name === "fetch_realtime_weather") {
+    return postJson("/api/tools/weather", args);
+  }
+  if (call.name === "get_npk_calibration") {
+    return postJson("/api/tools/calibration/show", {});
+  }
+  if (call.name === "reset_npk_calibration") {
+    return postJson("/api/tools/calibration/reset", {});
+  }
+  if (call.name === "set_npk_calibration") {
+    return postJson("/api/tools/calibration/set", args);
+  }
+  if (call.name === "set_npk_offset_calibration") {
+    return postJson("/api/tools/calibration/offset", args);
+  }
+  if (call.name === "set_npk_two_point_calibration") {
+    return postJson("/api/tools/calibration/two-point", args);
   }
   return { ok: false, error: `Unknown tool: ${call.name}` };
 }

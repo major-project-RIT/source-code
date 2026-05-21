@@ -173,3 +173,49 @@ Use mock N=120 P=30 K=200 and explain the fertilizer advice.
 ```
 
 The first version is text-first for debugging. The same `read_npk_sensor` tool can be reused when you switch the session to speech input/output.
+
+## Twilio Outbound NPK Call
+
+The host can also place an outbound Twilio Voice call, stream the call audio to the OpenAI Realtime API, capture a live ESP32 NPK reading before dialing, and let the assistant discuss that reading with the recipient.
+
+Use the same Twilio/Realtime environment variable names as the `voice-agent` project:
+
+```sh
+OPENAI_API_KEY=sk-your-key-here
+REALTIME_MODEL=gpt-realtime-1.5
+REALTIME_VOICE=marin
+REALTIME_TRANSCRIPTION_MODEL=gpt-4o-transcribe
+TRANSCRIPTION_LANGUAGE=en
+PUBLIC_BASE_URL=https://your-public-ngrok-url.example
+TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_AUTH_TOKEN=your-twilio-auth-token
+TWILIO_FROM_NUMBER=+15551234567
+TWILIO_TO_NUMBER=+15557654321
+TWILIO_NO_PLACE_CALL=false
+TWILIO_MOCK_NPK=
+TWILIO_HOST=0.0.0.0
+TWILIO_PORT=3000
+ESP32_SERIAL_PORT=/dev/cu.usbmodem11101
+ESP32_SERIAL_BAUD=115200
+PORT=3000
+```
+
+Start a public tunnel to the local port, then dial:
+
+```sh
+npm run twilio:call
+```
+
+For webhook testing without dialing:
+
+```sh
+TWILIO_NO_PLACE_CALL=true
+```
+
+For a demo without the physical sensor:
+
+```sh
+TWILIO_MOCK_NPK=120,30,200
+```
+
+CLI flags are still supported as temporary overrides, for example `npm run twilio:call -- --to-number +15551234567`.

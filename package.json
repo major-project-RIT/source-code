@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node host/browserServer.js",
     "realtime": "node host/realtimeBridge.js",
+    "twilio:call": "node host/twilioCallBridge.js",
     "serial:mock": "node host/serialSmokeTest.js"
   },
   "dependencies": {

@@ -1,70 +1,73 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>NPK Voice Advisor</title>
-    <link rel="stylesheet" href="/styles.css" />
-  </head>
-  <body>
-    <main class="shell">
-      <section class="hero">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NPK Voice Advisor</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">ESP32 + GPT Realtime</p>
+        <h1>Soil speaks. Field ready answers.</h1>
+        <p class="lede">
+          A local browser cockpit for the NPK sensor. The model talks, but the ESP32 stays in charge of the STCR maths.
+        </p>
+      </div>
+      <div class="status-card">
+        <span id="statusDot" class="status-dot"></span>
         <div>
-          <p class="eyebrow">ESP32 + GPT Realtime</p>
-          <h1>Soil speaks. Rice advice answers.</h1>
-          <p class="lede">
-            A local browser cockpit for the NPK sensor. The model talks, but the ESP32 stays in charge of the STCR maths.
-          </p>
+          <p class="label">Connection</p>
+          <strong id="statusText">Idle</strong>
         </div>
-        <div class="status-card">
-          <span id="statusDot" class="status-dot"></span>
-          <div>
-            <p class="label">Connection</p>
-            <strong id="statusText">Idle</strong>
-          </div>
-        </div>
-      </section>
+      </div>
+    </section>
 
-      <section class="controls">
-        <button id="connectButton" class="primary">Start voice session</button>
-        <button id="disconnectButton" class="ghost" disabled>Stop</button>
-        <button id="readSensorButton" class="ghost" disabled>Ask current sensor</button>
-        <button id="mockButton" class="ghost" disabled>Demo mock reading</button>
-      </section>
+    <section class="controls">
+      <button id="connectButton" class="primary">Start voice session</button>
+      <button id="disconnectButton" class="ghost" disabled>Stop</button>
+      <button id="readSensorButton" class="ghost" disabled>Ask current sensor</button>
+      <button id="mockButton" class="ghost" disabled>Demo mock reading</button>
+    </section>
 
-      <section class="conversation">
-        <div class="panel transcript-panel">
-          <div class="panel-header">
-            <p class="label">Conversation</p>
-            <span>Speak naturally or type below</span>
-          </div>
-          <div id="transcript" class="transcript"></div>
-          <form id="textForm" class="text-form">
-            <input id="textInput" type="text" placeholder="Ask: Can I grow rice with this soil?" autocomplete="off" />
-            <button type="submit" disabled>Send</button>
-          </form>
-        </div>
-
-        <aside class="panel sensor-panel">
-          <div class="panel-header">
-            <p class="label">Latest STCR result</p>
-            <span id="toolStatus">No tool call yet</span>
-          </div>
-          <div id="cropSummary" class="crop-summary"></div>
-          <pre id="sensorJson">{}</pre>
-        </aside>
-      </section>
-
-      <section class="panel event-panel">
+    <section class="conversation">
+      <div class="panel transcript-panel">
         <div class="panel-header">
-          <p class="label">Runtime log</p>
-          <span>Browser WebRTC + local tool bridge</span>
+          <p class="label">Conversation</p>
+          <span>Speak naturally or type below</span>
         </div>
-        <div id="eventLog" class="event-log"></div>
-      </section>
-    </main>
+        <div id="transcript" class="transcript"></div>
+        <form id="textForm" class="text-form">
+          <input id="textInput" type="text" placeholder="Ask: Can I grow rice with this soil?" autocomplete="off" />
+          <button type="submit" disabled>Send</button>
+        </form>
+      </div>
 
-    <audio id="remoteAudio" autoplay></audio>
-    <script type="module" src="/app.js"></script>
-  </body>
+      <aside class="panel sensor-panel">
+        <div class="panel-header">
+          <p class="label">Latest STCR result</p>
+          <span id="toolStatus">No tool call yet</span>
+        </div>
+        <div id="cropSummary" class="crop-summary"></div>
+        <pre id="sensorJson">{}</pre>
+      </aside>
+    </section>
+
+    <section class="panel event-panel">
+      <div class="panel-header">
+        <p class="label">Runtime log</p>
+        <span>Browser WebRTC + local tool bridge</span>
+      </div>
+      <div id="eventLog" class="event-log"></div>
+    </section>
+  </main>
+
+  <audio id="remoteAudio" autoplay></audio>
+  <script type="module" src="/app.js"></script>
+</body>
+
 </html>

@@ -9,14 +9,15 @@ import { Esp32SerialTool } from "./esp32SerialTool.js";
 import { REALTIME_INSTRUCTIONS } from "./realtimePrompt.js";
 import { REALTIME_TOOLS } from "./realtimeTools.js";
 import { enrichWithStcrRanking, rankCropsFromNpk } from "./stcrEngine.js";
+import { fetchRealtimeWeather } from "./weatherSearchTool.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, "..");
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const MODEL = process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-1.5";
-const VOICE = process.env.OPENAI_REALTIME_VOICE || "marin";
+const MODEL = process.env.REALTIME_MODEL || process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-1.5";
+const VOICE = process.env.REALTIME_VOICE || process.env.OPENAI_REALTIME_VOICE || "marin";
 const SERVER_PORT = Number(process.env.PORT || 3000);
 const SERIAL_PORT = process.env.ESP32_SERIAL_PORT || "/dev/cu.usbmodem1101";
 const SERIAL_BAUD = Number(process.env.ESP32_SERIAL_BAUD || 115200);
@@ -123,6 +124,72 @@ app.post("/api/tools/mock-npk", async (request, response) => {
 app.post("/api/tools/rank-crops", async (request, response) => {
   try {
     response.json(rankCropsFromNpk(request.body || {}));
+  } catch (error) {
+    response.status(400).json({
+      ok: false,
+      error: error.message,
+    });
+  }
+});
+
+app.post("/api/tools/calibration/show", async (_request, response) => {
+  try {
+    response.json(await esp32.getCalibration());
+  } catch (error) {
+    response.status(400).json({
+      ok: false,
+      error: error.message,
+    });
+  }
+});
+
+app.post("/api/tools/calibration/reset", async (_request, response) => {
+  try {
+    response.json(await esp32.resetCalibration());
+  } catch (error) {
+    response.status(400).json({
+      ok: false,
+      error: error.message,
+    });
+  }
+});
+
+app.post("/api/tools/calibration/set", async (request, response) => {
+  try {
+    response.json(await esp32.setCalibration(request.body || {}));
+  } catch (error) {
+    response.status(400).json({
+      ok: false,
+      error: error.message,
+    });
+  }
+});
+
+app.post("/api/tools/calibration/offset", async (request, response) => {
+  try {
+    response.json(await esp32.setOffsetCalibration(request.body || {}));
+  } catch (error) {
+    response.status(400).json({
+      ok: false,
+      error: error.message,
+    });
+  }
+});
+
+app.post("/api/tools/calibration/two-point", async (request, response) => {
+  try {
+    response.json(await esp32.setTwoPointCalibration(request.body || {}));
+  } catch (error) {
+    response.status(400).json({
+      ok: false,
+      error: error.message,
+    });
+  }
+});
+
+app.post("/api/tools/weather", async (request, response) => {
+  try {
+    response.json(await fetchRealtimeWeather(request.body || {}));
   } catch (error) {
     response.status(400).json({
       ok: false,
